@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Công cụ Quản lý & Di Chuyển File (V2.0)</title>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f7f6; margin: 0; padding: 20px; color: #333; }
+        .container { max-width: 850px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.08); }
+        h2 { text-align: center; color: #b30000; margin-bottom: 8px; }
+        .subtitle { text-align: center; font-size: 13px; color: #888; margin-bottom: 20px; }
+        .section { margin-bottom: 20px; padding: 15px; border: 1px solid #e0e0e0; border-radius: 6px; background: #fafafa; }
+        .section h3 { margin-top: 0; font-size: 16px; color: #444; border-bottom: 2px solid #b30000; padding-bottom: 5px; }
+        .form-row { margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; }
+        label { font-weight: 600; width: 35%; font-size: 14px; }
+        input[type="text"], input[type="number"], select, input[type="file"] { width: 60%; padding: 8px 12px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; box-sizing: border-box; }
+        button { background-color: #007bff; color: white; border: none; padding: 8px 15px; cursor: pointer; border-radius: 4px; font-weight: bold; font-size: 14px; transition: background 0.2s; }
+        button:hover { background-color: #0056b3; }
+        button:disabled { background-color: #cccccc; cursor: not-allowed; }
+        .btn-action { background-color: #b30000; width: 100%; padding: 12px; font-size: 16px; margin-top: 10px; }
+        .btn-action:hover { background-color: #8a0000; }
+        .btn-cancel { background-color: #dc3545; width: 100%; padding: 10px; font-size: 14px; margin-top: 8px; display: none; }
+        .btn-cancel:hover { background-color: #b02a37; }
+        progress { width: 100%; height: 22px; border-radius: 4px; margin-top: 15px; }
+        .status-box { background: #1e1e1e; color: #00ff00; padding: 12px; border-radius: 5px; font-family: monospace; font-size: 13px; height: 200px; overflow-y: auto; white-space: pre-wrap; margin-top: 10px; }
+        .info-text { font-size: 13px; color: #666; }
+        .progress-label { display:flex; justify-content: space-between; font-size: 13px; color: #555; margin-top: 6px; }
+        .warn-box { background: #fff3cd; border: 1px solid #ffe69c; color: #7a5b00; border-radius: 6px; padding: 10px 12px; font-size: 13px; margin-bottom: 20px; }
+        .folder-list-row { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 12px; }
+        .folder-list-row > label { width: 35%; font-weight: 600; font-size: 14px; padding-top: 6px; }
+        .folder-chip-box { width: 60%; display: flex; flex-wrap: wrap; gap: 6px; min-height: 34px; }
+        .folder-chip { display: inline-flex; align-items: center; gap: 6px; background: #eef3ff; border: 1px solid #c8d8ff; color: #0056b3; border-radius: 14px; padding: 4px 6px 4px 10px; font-size: 12px; }
+        .chip-remove { background: transparent; color: #b30000; border: none; padding: 0 4px; font-weight: bold; cursor: pointer; font-size: 13px; line-height: 1; }
+        .chip-remove:hover { background: #ffe0e0; border-radius: 50%; }
+        .app-footer { text-align: center; font-size: 12px; color: #888; margin: 16px auto 0; max-width: 850px; padding-top: 10px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>Công cụ Quản lý & Di Chuyển File (V2.0)</h2>
+    <div class="subtitle">Move file (cắt &amp; dán) theo điều kiện lọc từ Excel — quét cả thư mục con, giữ nguyên cấu trúc &amp; dung lượng gốc</div>
+
+    <div class="warn-box">
+        ⚠️ Đây là thao tác <b>DI CHUYỂN (move)</b>: file gốc sẽ bị <b>xóa khỏi thư mục nguồn</b> sau khi đã sao chép thành công sang thư mục đích (giống thao tác Cắt &amp; Dán). Có thể <b>thêm nhiều thư mục nguồn cùng lúc</b> — mỗi thư mục nguồn có thể chứa nhiều thư mục con bên trong, công cụ sẽ quét toàn bộ. Vui lòng cân nhắc trước khi chạy, hoặc sao lưu dữ liệu nếu cần.
+    </div>
+
+    <div class="section">
+        <h3>1. Dữ liệu nguồn Excel</h3>
+        <div class="form-row">
+            <label>Chọn file Excel (.xlsx):</label>
+            <input type="file" id="excelFile" accept=".xlsx, .xls">
+        </div>
+        <div class="form-row">
+            <label>Tổng số bản ghi:</label>
+            <span id="rowCount" class="info-text" style="width: 60%; color: #007bff; font-weight: bold;">Chưa có file</span>
+        </div>
+    </div>
+
+    <div class="section">
+        <h3>2. Thư mục Hệ thống</h3>
+        <div class="folder-list-row">
+            <label>Thư mục chứa file gốc:</label>
+            <div style="width: 60%;">
+                <button type="button" onclick="selectSourceFolder()">+ Thêm Thư Mục Nguồn</button>
+                <div id="srcFolderList" class="folder-chip-box" style="margin-top: 8px;">
+                    <span class="info-text" style="color:#555;">Chưa chọn thư mục nào</span>
+                </div>
+            </div>
+        </div>
+        <div class="form-row">
+            <label>Thư mục gốc lưu kết quả:</label>
+            <button type="button" onclick="selectTargetRootFolder()">Chọn Thư Mục Đích</button>
+        </div>
+        <div class="form-row">
+            <label>Trạng thái đích:</label>
+            <span id="dstPathLbl" class="info-text" style="width: 60%; color: #555;">Chưa chọn thư mục</span>
+        </div>
+        <div class="form-row">
+            <label>Tên thư mục con đích:</label>
+            <input type="text" id="targetFolderName" value="KetQua_DaDiChuyen">
+        </div>
+    </div>
+
+    <div class="section">
+        <h3>3. Lọc và Thực thi</h3>
+        <div class="form-row">
+            <label>Cột chứa tên file:</label>
+            <select id="fileNameColumn"><option value="">-- Chưa nạp dữ liệu --</option></select>
+        </div>
+        <div class="form-row">
+            <label>Cột làm điều kiện lọc:</label>
+            <select id="filterColumn"><option value="">-- Chưa nạp dữ liệu --</option></select>
+        </div>
+        <div class="form-row">
+            <label>Giá trị lọc:</label>
+            <select id="filterValue"><option value="__ALL__">-- Tất cả --</option></select>
+        </div>
+        <div class="form-row">
+            <label>Số file xử lý song song:</label>
+            <input type="number" id="concurrency" value="4" min="1" max="8">
+        </div>
+        <button type="button" class="btn-action" id="btnRun" onclick="executeMoveProcess()" disabled>Bắt Đầu Di Chuyển File</button>
+        <button type="button" class="btn-cancel" id="btnCancel" onclick="requestCancel()">Hủy Quá Trình</button>
+
+        <progress id="progressBar" value="0" max="100"></progress>
+        <div class="progress-label">
+            <span id="progressText">0 / 0</span>
+            <span id="progressPct">0%</span>
+        </div>
+    </div>
+
+    <h3>Nhật ký thực thi:</h3>
+    <div class="status-box" id="logBox">Hệ thống sẵn sàng xử lý...</div>
+</div>
+
+<script>
+    let excelData = [];
+    let sourceDirHandles = []; // [{ handle, name }] - cho phép thêm nhiều thư mục nguồn cùng lúc
+    let targetRootDirHandle = null;
+    let cancelRequested = false;
+    let isRunning = false;
+
+    // ---- Ghi log dạng bộ đệm, chỉ vẽ lại DOM theo khung hình (rAF) ----
+    // Tránh việc mỗi lần xử lý 1 file lại ép trình duyệt reflow/redraw ngay lập tức,
+    // đây là nguyên nhân chính gây "đơ" giao diện khi xử lý hàng nghìn file.
+    let logBuffer = [];
+    let logFlushScheduled = false;
+    const MAX_LOG_LINES = 400;
+
+    function log(message) {
+        logBuffer.push(`> ${message}`);
+        if (!logFlushScheduled) {
+            logFlushScheduled = true;
+            requestAnimationFrame(flushLog);
+        }
+    }
+
+    function flushLog() {
+        logFlushScheduled = false;
+        if (logBuffer.length === 0) return;
+        const box = document.getElementById('logBox');
+        const existing = box.innerText.split('\n');
+        let combined = existing.concat(logBuffer);
+        if (combined.length > MAX_LOG_LINES) {
+            combined = combined.slice(combined.length - MAX_LOG_LINES);
+        }
+        box.innerText = combined.join('\n');
+        box.scrollTop = box.scrollHeight;
+        logBuffer = [];
+    }
+
+    // ---- Chuẩn hóa chuỗi để so khớp: bỏ khoảng trắng thừa + chuẩn hóa Unicode tiếng Việt (NFC) ----
+    // Cùng một chữ tiếng Việt có thể được lưu ở 2 dạng Unicode khác nhau (dựng sẵn NFC / tổ hợp NFD)
+    // tùy nguồn xuất dữ liệu, khiến 2 chuỗi "trông giống hệt nhau" nhưng so sánh === lại KHÔNG khớp.
+    // Chuẩn hóa cả 2 vế trước khi so sánh để tránh lọc/tìm file bị sai do lỗi ẩn này.
+    function normalizeText(v) {
+        if (v === undefined || v === null) return '';
+        return String(v).trim().normalize('NFC');
+    }
+
+    // ---- Tự động điền giá trị xuống các ô bị GỘP (merged cells) trong Excel ----
+    // LỖI GỐC: khi 1 vùng ô bị gộp (ví dụ cột "Kết quả" gộp chung cho nhiều dòng liền nhau),
+    // dữ liệu thật sự chỉ được lưu ở ô đầu tiên (góc trên-trái) của vùng gộp; các ô còn lại
+    // trong vùng đó HOÀN TOÀN RỖNG trong file .xlsx, dù khi mở bằng Excel mắt thường vẫn thấy
+    // "có giá trị" trải dài qua các dòng. Do đó khi đọc bằng thư viện, các dòng bị gộp (trừ dòng
+    // đầu) sẽ có filterColumn/fileNameColumn = undefined => bị loại khỏi điều kiện lọc dù đáng lẽ khớp.
+    // Hàm này copy giá trị của ô đầu tiên xuống toàn bộ các ô còn lại trong từng vùng gộp,
+    // TRƯỚC KHI chuyển sang JSON, để đảm bảo lọc theo cột đúng cho mọi dòng.
+    function fillMergedCells(worksheet) {
+        const merges = worksheet['!merges'];
+        if (!merges || merges.length === 0) return 0;
+        merges.forEach(range => {
+            const startAddr = XLSX.utils.encode_cell(range.s);
+            const startCell = worksheet[startAddr];
+            if (!startCell) return;
+            for (let R = range.s.r; R <= range.e.r; R++) {
+                for (let C = range.s.c; C <= range.e.c; C++) {
+                    if (R === range.s.r && C === range.s.c) continue;
+                    const addr = XLSX.utils.encode_cell({ r: R, c: C });
+                    if (!worksheet[addr] || worksheet[addr].v === undefined || worksheet[addr].v === '') {
+                        worksheet[addr] = { ...startCell };
+                    }
+                }
+            }
+        });
+        return merges.length;
+    }
+
+    document.getElementById('excelFile').addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            try {
+                const data = new Uint8Array(e.target.result);
+                const workbook = XLSX.read(data, { type: 'array' });
+                const firstSheetName = workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[firstSheetName];
+
+                const mergeCount = fillMergedCells(worksheet);
+                if (mergeCount > 0) {
+                    log(`Phát hiện ${mergeCount} vùng ô bị GỘP trong Excel — đã tự động điền giá trị xuống các dòng bị gộp để đảm bảo lọc đúng theo điều kiện.`);
+                }
+
+                excelData = XLSX.utils.sheet_to_json(worksheet);
+                document.getElementById('rowCount').innerText = `${excelData.length} dòng dữ liệu`;
+                log(`Đã nạp file Excel: ${file.name} (${excelData.length} bản ghi).`);
+                populateColumnSelectors();
+                checkEnableRunButton();
+            } catch (error) {
+                alert("Lỗi đọc file Excel: " + error.message);
+            }
+        };
+        reader.readAsArrayBuffer(file);
+    });
+
+    // ---- Cho phép thêm nhiều thư mục nguồn cùng lúc ----
+    // Trình duyệt chỉ hỗ trợ chọn 1 thư mục / lần bấm (showDirectoryPicker), nên để chọn
+    // "nhiều thư mục nguồn cùng lúc" người dùng bấm nút này nhiều lần; mỗi thư mục được
+    // thêm vào danh sách sourceDirHandles và sau đó TẤT CẢ đều được quét đệ quy (kể cả
+    // các thư mục con bên trong từng thư mục nguồn) khi bắt đầu di chuyển.
+    async function selectSourceFolder() {
+        try {
+            const handle = await window.showDirectoryPicker();
+
+            for (const existing of sourceDirHandles) {
+                if (typeof existing.handle.isSameEntry === 'function') {
+                    const same = await existing.handle.isSameEntry(handle);
+                    if (same) {
+                        alert(`Thư mục "${handle.name}" đã được thêm trước đó.`);
+                        return;
+                    }
+                } else if (existing.handle === handle) {
+                    alert(`Thư mục "${handle.name}" đã được thêm trước đó.`);
+                    return;
+                }
+            }
+
+            sourceDirHandles.push({ handle, name: handle.name });
+            log(`Đã thêm thư mục nguồn: ${handle.name} (tổng: ${sourceDirHandles.length} thư mục nguồn).`);
+            renderSourceFolderList();
+            checkEnableRunButton();
+        } catch (err) {
+            if (err.name !== 'AbortError') alert("Không thể mở thư mục: " + err.message);
+        }
+    }
+
+    function renderSourceFolderList() {
+        const container = document.getElementById('srcFolderList');
+        container.innerHTML = '';
+        if (sourceDirHandles.length === 0) {
+            container.innerHTML = '<span class="info-text" style="color:#555;">Chưa chọn thư mục nào</span>';
+            return;
+        }
+        sourceDirHandles.forEach((entry, idx) => {
+            const chip = document.createElement('span');
+            chip.className = 'folder-chip';
+            chip.innerHTML = `📁 ${entry.name} <button type="button" class="chip-remove" title="Bỏ thư mục này" onclick="removeSourceFolder(${idx})">✕</button>`;
+            container.appendChild(chip);
+        });
+    }
+
+    function removeSourceFolder(idx) {
+        const removed = sourceDirHandles.splice(idx, 1);
+        if (removed[0]) log(`Đã bỏ thư mục nguồn: ${removed[0].name}`);
+        renderSourceFolderList();
+        checkEnableRunButton();
+    }
+
+    async function selectTargetRootFolder() {
+        try {
+            targetRootDirHandle = await window.showDirectoryPicker();
+            document.getElementById('dstPathLbl').innerText = `Đã chọn: [ ${targetRootDirHandle.name} ]`;
+            log(`Đã kết nối thư mục đích: ${targetRootDirHandle.name}`);
+            checkEnableRunButton();
+        } catch (err) {
+            if (err.name !== 'AbortError') alert("Không thể mở thư mục: " + err.message);
+        }
+    }
+
+    function checkEnableRunButton() {
+        const ready = excelData.length > 0 && sourceDirHandles.length > 0 && targetRootDirHandle !== null;
+        document.getElementById('btnRun').disabled = !ready;
+    }
+
+    // ---- Điền combobox "Cột chứa tên file" và "Cột làm điều kiện lọc" từ header thực tế của file Excel ----
+    function populateColumnSelectors() {
+        if (excelData.length === 0) return;
+        const columns = Object.keys(excelData[0]);
+
+        const fileNameSelect = document.getElementById('fileNameColumn');
+        const filterColumnSelect = document.getElementById('filterColumn');
+        fileNameSelect.innerHTML = '';
+        filterColumnSelect.innerHTML = '';
+
+        columns.forEach(col => {
+            fileNameSelect.appendChild(new Option(col, col));
+            filterColumnSelect.appendChild(new Option(col, col));
+        });
+
+        const guessedFileCol = columns.find(c => c.toLowerCase().includes('ten_file') || c.toLowerCase().includes('tên file'));
+        if (guessedFileCol) fileNameSelect.value = guessedFileCol;
+
+        const guessedFilterCol = columns.find(c => c.toLowerCase().includes('ket_qua') || c.toLowerCase().includes('kết quả') || c.toLowerCase().includes('trạng thái'));
+        if (guessedFilterCol) filterColumnSelect.value = guessedFilterCol;
+
+        populateFilterValues();
+    }
+
+    // ---- Điền combobox "Giá trị lọc" bằng các giá trị duy nhất (distinct) thực tế trong cột đã chọn ----
+    function populateFilterValues() {
+        const filterColumn = document.getElementById('filterColumn').value;
+        const filterValueSelect = document.getElementById('filterValue');
+        filterValueSelect.innerHTML = '';
+        filterValueSelect.appendChild(new Option('-- Tất cả --', '__ALL__'));
+
+        if (!filterColumn) return;
+
+        const distinctValues = new Set();
+        excelData.forEach(row => {
+            const val = normalizeText(row[filterColumn]);
+            if (val !== '') distinctValues.add(val);
+        });
+
+        Array.from(distinctValues).sort((a, b) => a.localeCompare(b, 'vi')).forEach(val => {
+            filterValueSelect.appendChild(new Option(val, val));
+        });
+    }
+
+    document.getElementById('filterColumn').addEventListener('change', populateFilterValues);
+
+    function requestCancel() {
+        if (!isRunning) return;
+        cancelRequested = true;
+        log('Đã yêu cầu hủy... đang chờ các tác vụ đang chạy hoàn tất.');
+    }
+
+    function updateProgressUI(done, total) {
+        const progressBar = document.getElementById('progressBar');
+        progressBar.value = done;
+        progressBar.max = total;
+        document.getElementById('progressText').innerText = `${done} / ${total}`;
+        document.getElementById('progressPct').innerText = `${total ? Math.round((done / total) * 100) : 0}%`;
+    }
+
+    // ---- Quét đệ quy toàn bộ (các) thư mục nguồn đã thêm, kể cả mọi thư mục con bên trong ----
+    // Xây dựng chỉ mục: tên file -> danh sách { parentDirHandle, relPath (mảng tên thư mục, bắt đầu
+    // bằng chính tên thư mục nguồn gốc rồi đến các thư mục con lồng nhau).
+    // relPath bắt đầu bằng tên thư mục nguồn để: (1) giữ nguyên cấu trúc tên thư mục gốc khi tái tạo
+    // ở đích, và (2) tránh đụng độ khi có nhiều thư mục nguồn khác nhau chứa thư mục con trùng tên.
+    async function buildSourceIndex(dirHandle, relPath, index, counter) {
+        for await (const [name, handle] of dirHandle.entries()) {
+            if (cancelRequested) return;
+            if (handle.kind === 'file') {
+                if (!index.has(name)) index.set(name, []);
+                index.get(name).push({ parentDirHandle: dirHandle, relPath: relPath.slice() });
+                counter.count++;
+            } else if (handle.kind === 'directory') {
+                await buildSourceIndex(handle, relPath.concat(name), index, counter);
+            }
+        }
+    }
+
+    // ---- Lấy (hoặc tạo mới) thư mục con lồng nhau theo danh sách tên thư mục ----
+    // Dùng để tái tạo lại y hệt cấu trúc sub-folder gốc bên trong thư mục đích.
+    async function getOrCreateNestedDir(rootHandle, pathSegments) {
+        let current = rootHandle;
+        for (const segment of pathSegments) {
+            current = await current.getDirectoryHandle(segment, { create: true });
+        }
+        return current;
+    }
+
+    // ---- Di chuyển 1 file: copy bằng streaming (pipeTo), kiểm tra dung lượng, rồi xóa file gốc ----
+    // 1) Ghi file mới vào đúng vị trí thư mục con tương ứng ở đích (giữ nguyên cấu trúc gốc).
+    // 2) Đọc lại file vừa ghi và so sánh dung lượng (bytes) với file gốc để đảm bảo dữ liệu
+    //    được sao chép toàn vẹn (giữ nguyên dung lượng gốc) trước khi xóa.
+    // 3) Chỉ xóa file gốc khỏi thư mục nguồn nếu bước kiểm tra ở (2) khớp tuyệt đối.
+    //    => Nếu có lỗi giữa chừng, file gốc KHÔNG bị mất.
+    async function moveOneFile(item, matchEntry, targetDirHandle) {
+        const nestedTargetDir = matchEntry.relPath.length
+            ? await getOrCreateNestedDir(targetDirHandle, matchEntry.relPath)
+            : targetDirHandle;
+
+        const fileHandle = await matchEntry.parentDirHandle.getFileHandle(item.fileName);
+        const file = await fileHandle.getFile();
+        const originalSize = file.size;
+
+        const newFileHandle = await nestedTargetDir.getFileHandle(item.fileName, { create: true });
+        const writable = await newFileHandle.createWritable();
+        await file.stream().pipeTo(writable);
+
+        // Kiểm tra toàn vẹn dung lượng trước khi xóa file gốc
+        const writtenHandle = await nestedTargetDir.getFileHandle(item.fileName);
+        const writtenFile = await writtenHandle.getFile();
+        if (writtenFile.size !== originalSize) {
+            throw new Error(`Dung lượng sau khi chuyển (${writtenFile.size}) không khớp file gốc (${originalSize}) - file gốc được GIỮ LẠI để an toàn.`);
+        }
+
+        // Đã xác nhận toàn vẹn -> an toàn để xóa file gốc (hoàn tất thao tác "move")
+        await matchEntry.parentDirHandle.removeEntry(item.fileName);
+
+        return { size: originalSize, relPath: matchEntry.relPath };
+    }
+
+    // ---- Pool xử lý song song có giới hạn ----
+    async function runWithConcurrency(items, worker, concurrency) {
+        let index = 0;
+        let active = 0;
+        let completed = 0;
+
+        return new Promise((resolve) => {
+            function launchNext() {
+                if (cancelRequested) {
+                    if (active === 0) resolve();
+                    return;
+                }
+                if (index >= items.length) {
+                    if (active === 0) resolve();
+                    return;
+                }
+                while (active < concurrency && index < items.length && !cancelRequested) {
+                    const item = items[index++];
+                    active++;
+                    worker(item)
+                        .then((res) => ({ success: true, res }))
+                        .catch((err) => ({ success: false, err }))
+                        .then((result) => {
+                            active--;
+                            completed++;
+                            if (result.success) {
+                                onFileSuccess(item, result.res);
+                            } else {
+                                onFileError(item, result.err);
+                            }
+                            updateProgressUI(completed, items.length);
+                            launchNext();
+                        });
+                }
+            }
+            launchNext();
+        });
+    }
+
+    let successCount = 0;
+    let notFoundCount = 0;
+
+    function onFileSuccess(item, res) {
+        successCount++;
+        item.result = 'Đã di chuyển';
+        item.sizeBytes = res.size;
+        item.subFolder = res.relPath.length ? res.relPath.join('/') : '(gốc)';
+    }
+
+    function onFileError(item, err) {
+        notFoundCount++;
+        item.result = item.result === 'Thiếu tên file' ? item.result : 'Không có file / Lỗi';
+        item.sizeBytes = null;
+        log(`Lỗi: "${item.fileName}" - ${err.message || err}`);
+    }
+
+    // ---- Định dạng dung lượng file dễ đọc (B/KB/MB/GB/TB) ----
+    function formatSize(bytes) {
+        if (bytes === null || bytes === undefined) return '';
+        if (bytes < 1024) return `${bytes} B`;
+        const units = ['KB', 'MB', 'GB', 'TB'];
+        let size = bytes;
+        let unitIndex = -1;
+        do {
+            size /= 1024;
+            unitIndex++;
+        } while (size >= 1024 && unitIndex < units.length - 1);
+        return `${size.toFixed(2)} ${units[unitIndex]}`;
+    }
+
+    // ---- Xuất báo cáo tổng hợp kết quả di chuyển ra file Excel ----
+    function exportReport(reportRows) {
+        try {
+            const dataForSheet = reportRows.map(item => ({
+                ...item.row,
+                'Kết quả': item.result,
+                'Thư mục con nguồn': item.subFolder || '',
+                'Dung lượng (bytes)': (item.sizeBytes !== null && item.sizeBytes !== undefined) ? item.sizeBytes : '',
+                'Dung lượng': formatSize(item.sizeBytes)
+            }));
+
+            const ws = XLSX.utils.json_to_sheet(dataForSheet);
+            const range = XLSX.utils.decode_range(ws['!ref']);
+            const footerRowIndex = range.e.r + 2;
+            XLSX.utils.sheet_add_aoa(
+                ws,
+                [['Nguồn: Phòng CSDL - Văn phòng đăng ký đất đai tỉnh An Giang.']],
+                { origin: { r: footerRowIndex, c: 0 } }
+            );
+
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'BaoCao');
+
+            const now = new Date();
+            const ts = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`;
+            const reportFileName = `BaoCao_DiChuyen_${ts}.xlsx`;
+
+            XLSX.writeFile(wb, reportFileName);
+            log(`Đã xuất báo cáo Excel: ${reportFileName}`);
+        } catch (err) {
+            log(`Lỗi khi xuất báo cáo Excel: ${err.message}`);
+        }
+    }
+
+    async function executeMoveProcess() {
+        if (isRunning) return;
+
+        const targetFolderName = document.getElementById('targetFolderName').value.trim();
+        const fileNameColumn = document.getElementById('fileNameColumn').value;
+        const filterColumn = document.getElementById('filterColumn').value;
+        const filterValue = document.getElementById('filterValue').value;
+        let concurrency = parseInt(document.getElementById('concurrency').value, 10);
+        if (!concurrency || concurrency < 1) concurrency = 1;
+        if (concurrency > 8) concurrency = 8;
+
+        if (!targetFolderName) {
+            alert("Vui lòng nhập tên thư mục đích!");
+            return;
+        }
+        if (sourceDirHandles.length === 0 || !targetRootDirHandle) {
+            alert("Vui lòng chọn đầy đủ thư mục nguồn (ít nhất 1) và thư mục đích!");
+            return;
+        }
+        if (!fileNameColumn) {
+            alert("Vui lòng chọn cột chứa tên file!");
+            return;
+        }
+
+        try {
+            const targetDirHandle = await targetRootDirHandle.getDirectoryHandle(targetFolderName, { create: true });
+
+            const validRows = excelData.filter(row => {
+                if (!filterColumn || filterValue === '__ALL__') return true;
+                return normalizeText(row[filterColumn]) === normalizeText(filterValue);
+            });
+
+            if (validRows.length === 0) {
+                alert("Không tìm thấy bản ghi nào khớp với điều kiện lọc!");
+                return;
+            }
+
+            const reportRows = validRows.map(row => {
+                const fileName = normalizeText(row[fileNameColumn]);
+                return {
+                    row,
+                    fileName,
+                    result: fileName ? 'Chưa xử lý' : 'Thiếu tên file',
+                    sizeBytes: null,
+                    subFolder: ''
+                };
+            });
+
+            const workItems = reportRows.filter(item => item.fileName);
+
+            if (workItems.length === 0) {
+                alert("Không xác định được tên file hợp lệ trong cột đã chọn!");
+                return;
+            }
+
+            // ---- Log chẩn đoán: cho thấy rõ điều kiện lọc thực sự khớp được bao nhiêu dòng ----
+            // để người dùng tự kiểm chứng ngay trên nhật ký trước khi xác nhận di chuyển,
+            // tránh trường hợp "tưởng lọc đúng" nhưng thực ra khớp sai/khớp 0 dòng.
+            log(`--- Kiểm tra điều kiện lọc ---`);
+            log(`Tổng số dòng trong Excel: ${excelData.length}`);
+            log(`Số dòng khớp điều kiện lọc (cột "${filterColumn || '(không lọc)'}" = "${filterValue === '__ALL__' ? 'Tất cả' : filterValue}"): ${validRows.length}`);
+            log(`Trong đó số dòng có tên file hợp lệ ở cột "${fileNameColumn}": ${workItems.length}`);
+            if (reportRows.length - workItems.length > 0) {
+                log(`Cảnh báo: ${reportRows.length - workItems.length} dòng khớp lọc nhưng THIẾU tên file, sẽ không được xử lý.`);
+            }
+            log(`Ví dụ 5 dòng đầu sẽ được di chuyển: ${workItems.slice(0, 5).map(i => i.fileName).join(', ')}${workItems.length > 5 ? ', ...' : ''}`);
+            flushLog();
+
+            const confirmed = window.confirm(
+                `Bạn sắp DI CHUYỂN (move) ${workItems.length} file, tìm kiếm trong ${sourceDirHandles.length} thư mục nguồn đã chọn (kể cả các thư mục con bên trong).\n\n` +
+                `File gốc sẽ bị XÓA khỏi thư mục nguồn ngay sau khi được sao chép thành công và kiểm tra khớp dung lượng.\n` +
+                `Cấu trúc tên thư mục gốc và các thư mục con sẽ được giữ nguyên ở thư mục đích.\n\n` +
+                `Bạn có chắc chắn muốn tiếp tục?`
+            );
+            if (!confirmed) {
+                log('Người dùng đã hủy thao tác trước khi bắt đầu.');
+                return;
+            }
+
+            log(`Điều kiện lọc: cột "${filterColumn || '(không lọc)'}" = "${filterValue === '__ALL__' ? 'Tất cả' : filterValue}"`);
+
+            successCount = 0;
+            notFoundCount = 0;
+            cancelRequested = false;
+            isRunning = true;
+            document.getElementById('btnRun').disabled = true;
+            document.getElementById('btnCancel').style.display = 'block';
+
+            // Bước 1: Quét toàn bộ TẤT CẢ thư mục nguồn đã thêm (đệ quy, gồm mọi thư mục con) để lập chỉ mục file
+            log(`Đang quét ${sourceDirHandles.length} thư mục nguồn (bao gồm tất cả thư mục con)...`);
+            const sourceIndex = new Map();
+            const counter = { count: 0 };
+            for (const srcEntry of sourceDirHandles) {
+                if (cancelRequested) break;
+                await buildSourceIndex(srcEntry.handle, [srcEntry.name], sourceIndex, counter);
+                log(`  - Đã quét xong thư mục nguồn: ${srcEntry.name}`);
+            }
+            flushLog();
+            log(`Đã quét xong tất cả: tìm thấy ${counter.count} file trong ${sourceDirHandles.length} thư mục nguồn (kể cả thư mục con).`);
+
+            // Bước 2: Đối chiếu từng dòng Excel với chỉ mục vừa quét
+            updateProgressUI(0, workItems.length);
+            log(`Bắt đầu di chuyển ${workItems.length} file (song song: ${concurrency})...`);
+
+            await runWithConcurrency(
+                workItems,
+                async (item) => {
+                    const matches = sourceIndex.get(item.fileName);
+                    if (!matches || matches.length === 0) {
+                        throw new Error('Không tìm thấy file trong thư mục nguồn (kể cả thư mục con).');
+                    }
+                    if (matches.length > 1) {
+                        log(`Cảnh báo: "${item.fileName}" trùng tên ở ${matches.length} vị trí khác nhau trong thư mục nguồn - dùng file tìm thấy đầu tiên.`);
+                    }
+                    return moveOneFile(item, matches[0], targetDirHandle);
+                },
+                concurrency
+            );
+
+            flushLog();
+
+            if (cancelRequested) {
+                log(`\n=== ĐÃ HỦY THEO YÊU CẦU ===`);
+                log(`- Đã di chuyển trước khi hủy: ${successCount} file`);
+                log(`- Lỗi/không tìm thấy: ${notFoundCount} file`);
+                alert(`Đã hủy quá trình.\n- Đã di chuyển: ${successCount}\n- Lỗi/Không thấy: ${notFoundCount}`);
+            } else {
+                log(`\n=== HOÀN TẤT QUÁ TRÌNH ===`);
+                log(`- Đã di chuyển: ${successCount} file`);
+                log(`- Không tìm thấy / lỗi: ${notFoundCount} file`);
+                alert(`Di chuyển hoàn tất!\n- Thành công: ${successCount}\n- Thất bại/Không thấy: ${notFoundCount}`);
+            }
+
+            exportReport(reportRows);
+
+        } catch (err) {
+            alert("Lỗi thực thi: " + err.message);
+            log(`Lỗi thực thi: ${err.message}`);
+        } finally {
+            isRunning = false;
+            cancelRequested = false;
+            document.getElementById('btnRun').disabled = false;
+            document.getElementById('btnCancel').style.display = 'none';
+            flushLog();
+        }
+    }
+</script>
+
+<div class="app-footer">Nguồn: Phòng CSDL - Văn phòng đăng ký đất đai tỉnh An Giang.</div>
+
+</body>
+</html>
